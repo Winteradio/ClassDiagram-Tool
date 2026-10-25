@@ -1170,6 +1170,10 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_json(400, {"error": "메모가 비어 있음"})
                     journal.add(data_path(repo), "note", "user", text[:2000])
                     return self.send_json(200, {"ok": True})
+                if route == "/api/journal_note_delete":
+                    if not journal.remove_note(data_path(repo), req.get("at"), req.get("text")):
+                        return self.send_json(404, {"error": "메모를 찾을 수 없음 (이미 지워졌을 수 있음)"})
+                    return self.send_json(200, {"ok": True})
                 if route == "/api/reset_chat":
                     sessions.pop(repo, None)
                     return self.send_json(200, {"ok": True})
@@ -1227,8 +1231,17 @@ def main():
     args = ap.parse_args()
     global PORT
     PORT = args.port
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}/"
+    # Windows에서는 SO_REUSEADDR이면 같은 포트에 서버가 중복으로 떠서 요청이 옛 서버로 갈 수 있으므로 끔
+    ThreadingHTTPServer.allow_reuse_address = os.name != "nt"
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        print(f"포트 {args.port}가 이미 사용 중임. 이미 실행 중인 서버가 있으면 그 창을 쓰거나 Ctrl+C로 끈 뒤 다시 실행할 것.\n"
+              f"(다른 포트로 띄우려면: python server.py --port {args.port + 1})")
+        if not args.no_browser:
+            webbrowser.open(url)
+        sys.exit(1)
     print(f"Class Diagram tool: {url}")
     if not args.no_browser:
         webbrowser.open(url)

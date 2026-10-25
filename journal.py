@@ -52,6 +52,17 @@ def add(data_path, kind, source, text, classes=(), items=()):
     save(data_path, j)
 
 
+def remove_note(data_path, at, text):
+    """사용자 메모 하나를 지움 (작성 시각 + 내용으로 찾음). 지웠으면 True."""
+    j = load(data_path)
+    for i, e in enumerate(j["entries"]):
+        if e["kind"] == "note" and e["at"] == at and e["text"] == text:
+            del j["entries"][i]
+            save(data_path, j)
+            return True
+    return False
+
+
 # ==================================================================== git (읽기 전용)
 def git(repo, *args, timeout=20):
     try:
