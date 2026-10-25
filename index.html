@@ -11,7 +11,7 @@
   --design: #1f9d55; --design-bg: #e7f6ed; --removed: #d64545; --touched: #e8a317;
   --accent: #3b6fd8; --group: rgba(120,130,150,.07); --group-stroke: #cfd4dc; --group-text: #5b6472; --edge: #7b8494;
   --chip: #eef1f6; --user-bubble: #e4ecfb; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --flag-mod: #2f7de1; --flag-review: #8e4fd6; --edited: #e8590c; --acc-prot: #b7791f;
+  --flag-mod: #2f7de1; --flag-review: #8e4fd6; --edited: #e8590c; --acc-prot: #b7791f; --memo: #0f9b8e;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -20,7 +20,7 @@
     --design: #3ccf7a; --design-bg: #1c3326; --removed: #f06b6b; --touched: #f2b632;
     --accent: #6f9bff; --group: rgba(160,175,200,.05); --group-stroke: #39404c; --group-text: #8b94a3; --edge: #8891a1;
     --chip: #2a303b; --user-bubble: #243150;
-    --flag-mod: #5aa2ff; --flag-review: #b98cff; --edited: #ff922b; --acc-prot: #e0b24a;
+    --flag-mod: #5aa2ff; --flag-review: #b98cff; --edited: #ff922b; --acc-prot: #e0b24a; --memo: #2ec4b6;
   }
 }
 * { box-sizing: border-box; }
@@ -37,7 +37,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid color-mix(in srgb
 
 #bar { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 #bar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-#repo { width: 300px; } #roots { width: 150px; } #search { width: 170px; }
+#repo { width: 260px; } #btnPick { padding: 4px 7px; } #roots { width: 150px; } #search { width: 170px; }
 #bar label { display: flex; gap: 4px; align-items: center; color: var(--muted); }
 
 main { flex: 1; display: flex; min-height: 0; }
@@ -74,6 +74,18 @@ main { flex: 1; display: flex; min-height: 0; }
 #svg.lod1 .node .zebra { display: none; }
 .node .pill rect { stroke: none; } .node .pill text { font: 600 10px system-ui, sans-serif; fill: #fff; }
 .node.drop .box { stroke: var(--accent); stroke-width: 4; }
+.memo-badge { cursor: pointer; } .memo-badge rect { fill: var(--memo); } .memo-badge text { font: 600 10px system-ui, sans-serif; fill: #fff; }
+.memo-badge:hover rect { filter: brightness(1.15); }
+.memo-pop { position: absolute; width: 320px; max-height: 60%; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 28px rgba(0,0,0,.25); z-index: 7; font-size: 12px; }
+.memo-pop[hidden] { display: none; }
+.mph { display: flex; gap: 6px; align-items: baseline; margin-bottom: 6px; } .mph b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memos { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.memo { border: 1px solid var(--line); border-left: 3px solid var(--memo); border-radius: 6px; padding: 5px 8px; cursor: pointer; background: var(--bg); }
+.memo:hover { border-color: var(--memo); }
+.memo .mtext { white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.memo.open .mtext { display: block; }
+.memo .mmeta { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.memo-pop .inrow { display: flex; gap: 4px; } .memo-pop textarea { flex: 1; min-width: 0; }
 .node.found .box { animation: found 0.6s ease-in-out 3; }
 @keyframes found { 50% { stroke: var(--accent); stroke-width: 8; } }
 /* 축소 단계별로 읽을 수 없는 텍스트를 숨김 (LOD) */
@@ -273,10 +285,12 @@ textarea.autogrow.scroll { overflow-y: auto; }
 </head>
 <body>
 <header id="bar">
-  <input id="repo" placeholder="repo 경로 (예: C:\Users\...\Game-Engine)" title="대상 repo 루트 경로">
+  <button id="btnOpen" class="primary" title="Ctrl+S로 저장한 다이어그램 파일(JSON) 열기">열기</button>
+  <span class="sep"></span>
+  <input id="repo" placeholder="스캔할 repo 경로 (📁로 선택)" title="대상 repo 루트 경로">
+  <button id="btnPick" title="탐색기에서 repo 폴더 선택">📁</button>
   <input id="roots" placeholder="스캔 폴더 (예: Engine)" title="쉼표로 구분. 비우면 repo 전체 (build/external 등 제외)">
-  <button id="btnOpen" class="primary">열기</button>
-  <button id="btnRescan" title="코드를 다시 읽어 code 항목만 갱신함. design 항목·삭제 표시·위치·역할은 유지">재스캔</button>
+  <button id="btnScan" title="repo의 헤더를 읽음. 처음이면 다이어그램을 만들고, 이미 있으면 코드 변경만 반영함 (설계 항목·플래그·위치·역할은 유지)">스캔</button>
   <span class="sep"></span>
   <input id="search" list="ids" placeholder="클래스 찾기 (Enter)">
   <datalist id="ids"></datalist>
@@ -308,6 +322,7 @@ textarea.autogrow.scroll { overflow-y: auto; }
       <span class="hint">클래스 박스나 인스펙터의 멤버 줄로 드래그 (다시 놓으면 꺼짐) · Ctrl+Z 되돌리기 · Ctrl+Shift+Z 다시 실행</span>
     </div>
     <div id="treePanel" class="pop" hidden></div>
+    <div id="memoPop" class="memo-pop" hidden></div>
     <div id="settingsPanel" class="pop" hidden>
       <h4>설정</h4>
       <label style="display:block">AI 연결
@@ -333,7 +348,7 @@ textarea.autogrow.scroll { overflow-y: auto; }
     </div>
     <div id="toast"></div>
     <div id="modal" class="modal" hidden><div class="modal-box"><h3 id="modalTitle"></h3><p id="modalText"></p><div class="row" id="modalBtns"></div></div></div>
-    <div id="status">repo 경로를 입력하고 열기를 누를 것</div>
+    <div id="status">저장 파일은 '열기', 새 repo는 📁로 폴더를 고른 뒤 '스캔'</div>
   </section>
   <div id="sideResizer" class="resizer-v" title="드래그해서 패널 폭 조절 (더블클릭: 기본값)"></div>
   <aside id="side">
@@ -388,10 +403,15 @@ const store = {
 
 // ------------------------------------------------------------ 서버 호출
 async function api(route, body) {
-  const res = await fetch("/api/" + route, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo: st.repo, roots: rootsValue(), ...body }) });
+  let res;
+  try {
+    res = await fetch("/api/" + route, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo: st.repo, roots: rootsValue(), ...body }) });
+  } catch {
+    throw new Error("서버에 연결할 수 없음. server.py가 실행 중인지 확인할 것 (python server.py)");
+  }
   const data = await res.json().catch(() => ({ error: "서버 응답을 읽을 수 없음" }));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
   return data;
 }
 const rootsValue = () => $("#roots").value.split(",").map(s => s.trim()).filter(Boolean);
@@ -698,6 +718,7 @@ function render() {
   placeNew();
   drawNodes(); drawOverlay(); updateLabels(); applyView(); updateStatus(); fillDatalist(); renderInspector();
   if (!$("#treePanel").hidden) renderTree();
+  if (st.memoPop) renderMemoPop();
   flushPositions();
 }
 function drawOverlay() { computeFrames(); drawGroups(); drawEdges(); }
@@ -748,6 +769,12 @@ function nodeInner(c) {
     const w = Math.round(tw(FLAG_SHORT[f], "600 10px system-ui") + 12);
     px -= w + 4;
     out += `<g class="pill" transform="translate(${px},-8)"><rect width="${w}" height="15" rx="7.5" style="fill:${FLAG_FILL[f]}"/><text x="${w / 2}" y="11" text-anchor="middle">${FLAG_SHORT[f]}</text></g>`;
+  }
+  // 메모가 있으면 박스 왼쪽 위에 작은 배지 (클릭하면 메모 목록)
+  const memos = c.memos || [];
+  if (memos.length) {
+    const label = `메모 ${memos.length}`, w = Math.round(tw(label, "600 10px system-ui") + 14);
+    out += `<g class="memo-badge" data-memo="${esc(c.id)}" transform="translate(-6,-9)"><title>메모 ${memos.length}개 (클릭해서 보기)</title><rect width="${w}" height="16" rx="8"/><text x="${w / 2}" y="11.5" text-anchor="middle">${label}</text></g>`;
   }
   st.nodeCache.set(c.id, out);
   return out;
@@ -1035,6 +1062,11 @@ function applyView() {
     if (st.hop && Math.abs(hopSize() - st.hop) / st.hop > 0.3) drawEdges();
     const w = viewWindow(0), r = st.win;
     if (w.x0 < r.x0 || w.y0 < r.y0 || w.x1 > r.x1 || w.y1 > r.y1 || (w.x1 - w.x0) * 4 < r.x1 - r.x0) drawNodes();
+    if (st.memoPop) {
+      // 팝오버는 배지를 따라감 (배지가 화면 밖으로 나가 컬링되면 닫음)
+      const b = document.querySelector(`.memo-badge[data-memo="${CSS.escape(st.memoPop.id)}"]`);
+      if (b) positionMemoPop(b); else closeMemoPop();
+    }
   });
 }
 function fitRect(x0, y0, x1, y1, maxK = 1.2, animate = false) {
@@ -1217,7 +1249,8 @@ function renderInspector() {
     <div class="prop"><label>자식</label><div>
       ${derived.map(link).join(", ") || `<span class="muted">없음</span>`}
       <div class="inrow"><input id="childIn" placeholder="새 자식 클래스 이름" spellcheck="false"><button class="sm" data-act="addchild">추가</button></div></div></div>
-    <div class="prop"><label>메모</label><div class="inrow"><textarea id="noteIn" class="autogrow" rows="1" placeholder="설계 메모 (Enter 저장, Shift+Enter 줄바꿈)">${esc(c.note || "")}</textarea></div></div>
+    <div class="prop"><label>메모</label><div>${memoListHtml(c, st.insMemoOpen)}${memoAddRow("memoNew")}</div></div>
+    <div class="prop"><label title="다이어그램 박스 안에 한 줄로 표시되는 노트">박스 노트</label><div class="inrow"><textarea id="noteIn" class="autogrow" rows="1" placeholder="박스에 표시할 한 줄 노트 (Enter 저장)">${esc(c.note || "")}</textarea></div></div>
     ${roleHtml(c)}
     <details data-sec="members" ${open.members ? "open" : ""}><summary>멤버 ${c.members.length}개 · 줄을 클릭해서 편집</summary>
       ${enumKind ? memTable("값", c.members) : memTable("멤버 변수", fields) + memTable("함수", methods)}
@@ -1234,7 +1267,7 @@ function renderInspector() {
     inp.value = k.v;
     if (k.f) { inp.focus(); try { inp.setSelectionRange(k.s, k.s); } catch {} }
   }
-  autoGrow($("#noteIn"));
+  autoGrow($("#noteIn")); autoGrow($("#memoNew"));
   for (const d of el.querySelectorAll("details[data-sec]")) d.addEventListener("toggle", () => { open[d.dataset.sec] = d.open; });
   $("#btnMention").onclick = () => { const t = $("#msg"); t.value += (t.value && !t.value.endsWith(" ") ? " " : "") + c.id + " "; t.focus(); };
   $("#btnRole").onclick = () => inferRole(c.id, true);
@@ -1318,6 +1351,11 @@ $("#inspector").addEventListener("click", (ev) => {
   if (ds.openfile) { openFile(ds.openfile, ds.line); return; }
   if (ds.gofile) { focusFile(ds.gofile); return; }
   if (ds.act) { inspectorAction(ds.act, ds); return; }
+  const memoEl = ev.target.closest("[data-delmemo], [data-addmemo]") || ev.target.closest("[data-memoid]");
+  if (memoEl && st.sel) {
+    memoAction(memoEl.dataset, st.sel, (mid) => { st.insMemoOpen = st.insMemoOpen === mid ? null : mid; renderInspector(); });
+    return;
+  }
   const row = ev.target.closest(".mem[data-sig]");
   if (row) { st.memEdit = st.memEdit === row.dataset.sig ? null : row.dataset.sig; renderInspector(); const s = $("#meSig"); if (s) s.focus(); }
 });
@@ -1325,6 +1363,7 @@ $("#inspector").addEventListener("keydown", (ev) => {
   if (ev.isComposing) return;
   if (ev.key === "Escape" && st.memEdit) { ev.stopPropagation(); st.memEdit = null; renderInspector(); return; }
   if (ev.key !== "Enter" || (ev.shiftKey && ev.target.tagName === "TEXTAREA")) return;  // Shift+Enter는 줄바꿈
+  if (ev.target.id === "memoNew") { ev.preventDefault(); if (st.sel) memoAction({ addmemo: "memoNew" }, st.sel); return; }
   const act = { maSig: "madd", meSig: "msave", baseIn: "addbase", childIn: "addchild", noteIn: "note" }[ev.target.id];
   if (act) { ev.preventDefault(); inspectorAction(act, {}); }
 });
@@ -1494,8 +1533,11 @@ svg.addEventListener("pointerdown", (ev) => {
   if (!st.d || ev.button !== 0) return;
   const node = ev.target.closest(".node");
   const groupTitle = ev.target.closest(".group text") && ev.target.closest(".group");
+  const badge = ev.target.closest(".memo-badge");
   const [wx, wy] = toWorld(ev);
-  if (node && node.dataset.group) drag = groupDrag(node.dataset.group, wx, wy);
+  if (!badge && !ev.target.closest("#memoPop")) closeMemoPop();
+  if (badge) drag = { kind: "memo", id: badge.dataset.memo, moved: false };
+  else if (node && node.dataset.group) drag = groupDrag(node.dataset.group, wx, wy);
   else if (node) { const c = st.d.classes[node.dataset.id]; drag = { kind: "node", ids: [c.id], start: [wx, wy], orig: [[c.x, c.y]], moved: false }; }
   else if (groupTitle) drag = groupDrag(groupTitle.dataset.group, wx, wy);
   else { drag = { kind: "pan", start: [ev.clientX, ev.clientY], orig: [st.view.x, st.view.y], moved: false }; svg.classList.add("panning"); }
@@ -1506,7 +1548,7 @@ svg.addEventListener("pointerdown", (ev) => {
 });
 let rafPending = false;
 svg.addEventListener("pointermove", (ev) => {
-  if (!drag) return;
+  if (!drag || drag.kind === "memo") return;
   if (drag.kind === "pan") {
     const dx = ev.clientX - drag.start[0], dy = ev.clientY - drag.start[1];
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -1540,6 +1582,7 @@ svg.addEventListener("pointerup", () => {
   svg.classList.remove("panning");
   const d0 = drag;
   drag = null;
+  if (d0.kind === "memo") { select(d0.id); openMemoPop(d0.id); return; }
   if (d0.kind === "pan") { if (!d0.moved) select(null); saveView(); applyView(); }
   else if (d0.moved) {
     // 실제로 위치가 바뀐 것만 기록 (빈 기록이 쌓이면 Ctrl+Z가 아무 일도 안 하는 것처럼 보임)
@@ -1681,14 +1724,19 @@ $("#btnReset").onclick = async () => {
 };
 
 // ------------------------------------------------------------ 열기 / 재스캔
+// route: "open" = 저장된 작업 불러오기(없으면 스캔, 시작 시 복원용) / "rescan" = 스캔 (처음이면 생성, 있으면 병합)
 async function openRepo(route) {
   st.repo = $("#repo").value.trim();
-  if (!st.repo) { toast("repo 경로를 입력할 것"); return; }
+  if (!st.repo) { toast("repo 경로를 입력하거나 📁로 폴더를 선택할 것"); return; }
   store.set("repo", st.repo); store.set("roots", $("#roots").value);
-  $("#status").textContent = route === "open" ? "여는 중…" : "코드 다시 읽는 중…";
+  $("#status").textContent = route === "open" ? "여는 중…" : "코드 읽는 중…";
   try {
-    const r = await api(route, {});
-    const firstOpen = !st.d || st.d.repo !== r.diagram.repo;
+    applyOpened(await api(route, {}), false);
+  } catch (e) { toast(e.message); $("#status").textContent = "열기 실패: " + e.message; }
+}
+function applyOpened(r, fresh) {
+  {
+    const firstOpen = fresh || !st.d || st.d.repo !== r.diagram.repo;
     st.d = r.diagram; st.touched = new Set();
     $("#palette").hidden = false;
     if (firstOpen) {
@@ -1708,11 +1756,76 @@ async function openRepo(route) {
     if (firstOpen && v && !relayout) { st.view = v; applyView(); } else if (firstOpen || r.created) fitAll();
     if (r.created) addMsg("ai pending", `코드에서 클래스 ${Object.keys(st.d.classes).length}개를 읽어 다이어그램을 만듦. 이제부터 대화로는 다이어그램만 수정됨.`);
     if (firstOpen) maybeAskConnect();
-  } catch (e) { toast(e.message); $("#status").textContent = "열기 실패: " + e.message; }
+  }
 }
-$("#btnOpen").onclick = () => openRepo("open");
-$("#btnRescan").onclick = () => { if (st.d) openRepo("rescan"); else toast("먼저 repo를 열 것"); };
-$("#repo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") openRepo("open"); });
+
+// 📁: 서버가 OS 폴더 선택 창을 띄워 repo 경로를 받아옴 (브라우저는 실제 경로를 알려주지 않음)
+async function pickRepoFolder() {
+  try {
+    toast("폴더 선택 창을 띄움 (작업 표시줄에 숨어 있을 수 있음)", true);
+    const r = await api("pick_folder", { initial: $("#repo").value.trim() });
+    if (!r.path) return "";
+    $("#repo").value = r.path;
+    toast("폴더를 선택함. 스캔 폴더를 확인하고 '스캔'을 누를 것", true);
+    $("#roots").focus();
+    return r.path;
+  } catch (e) { toast(e.message); return ""; }
+}
+
+// 열기: Ctrl+S로 저장한 묶음(JSON)을 골라 다이어그램·일지를 불러옴. 연 파일은 이후 Ctrl+S의 저장 대상이 됨
+async function openBundleFile() {
+  let file, handle = null;
+  try {
+    if (window.showOpenFilePicker) {
+      [handle] = await window.showOpenFilePicker({ types: [{ description: "Class Diagram (다이어그램 + 일지)", accept: { "application/json": [".json"] } }] });
+      file = await handle.getFile();
+    } else {
+      file = await new Promise((res) => {
+        const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
+        inp.onchange = () => res(inp.files[0] || null); inp.click();
+      });
+    }
+  } catch (e) { if (e.name !== "AbortError") toast(e.message); return; }
+  if (!file) return;
+  let bundle;
+  try { bundle = JSON.parse(await file.text()); } catch { toast("JSON 파일을 읽지 못함"); return; }
+  await importBundle(bundle, handle, file.name, {});
+}
+async function importBundle(bundle, handle, name, opts) {
+  try {
+    const r = await api("import", { bundle, repo: opts.repo || null, mode: opts.mode || null });
+    st.repo = r.repo; $("#repo").value = r.repo; store.set("repo", r.repo);
+    $("#roots").value = (r.diagram.roots || []).join(", "); store.set("roots", $("#roots").value);
+    if (handle) { await idb.set("bundle:" + r.repo, handle); st.savedName = handle.name; }
+    if (r.replaced) { st.hist = { undo: [], redo: [] }; saveHist(); }
+    applyOpened(r, r.replaced);
+    toast(`열기: ${name}${r.replaced ? "" : " (지금 작업을 유지하고 저장 대상만 이 파일로 연결함)"}`, true);
+  } catch (e) {
+    const d = e.data || {};
+    if (d.needRepo) {
+      const v = await ask("repo 폴더를 찾을 수 없음",
+        `저장 파일에 기록된 repo 경로가 이 PC에 없음:\n${d.savedRepo || "-"}\n\n이 다이어그램에 해당하는 repo 폴더를 선택할까?`,
+        [{ label: "취소", value: null }, { label: "폴더 선택", value: "pick", primary: true }]);
+      if (!v) return;
+      const p = await api("pick_folder", { initial: "" }).catch(() => ({}));
+      if (p.path) return importBundle(bundle, handle, name, { ...opts, repo: p.path });
+      return;
+    }
+    if (d.conflict) {
+      const v = await ask("이 repo의 작업 데이터가 이미 있음",
+        `파일 저장 시각: ${(d.fileSavedAt || "-").replace("T", " ")}\n지금 작업의 마지막 스캔: ${(d.localScannedAt || "-").replace("T", " ")}\n\n파일 내용으로 바꿀지, 지금 작업을 그대로 둘지 고를 것.`,
+        [{ label: "취소", value: null }, { label: "지금 작업 유지", value: "keep" }, { label: "파일 내용으로 덮어쓰기", value: "replace", primary: true }]);
+      if (v) return importBundle(bundle, handle, name, { ...opts, repo: d.repo, mode: v });
+      return;
+    }
+    toast(e.message);
+  }
+}
+
+$("#btnOpen").onclick = openBundleFile;
+$("#btnPick").onclick = pickRepoFolder;
+$("#btnScan").onclick = () => openRepo("rescan");
+$("#repo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") openRepo("rescan"); });
 
 // ------------------------------------------------------------ 상단 컨트롤
 $("#search").addEventListener("keydown", (ev) => {
@@ -1741,7 +1854,7 @@ document.addEventListener("keydown", (ev) => {
     if (ev.code === "KeyZ") { ev.preventDefault(); stepHistory(ev.shiftKey ? 1 : -1); return; }
     if (ev.code === "KeyY") { ev.preventDefault(); stepHistory(1); return; }
   }
-  if (ev.key === "Escape") { $("#treePanel").hidden = true; $("#settingsPanel").hidden = true; if (document.activeElement === document.body) select(null); }
+  if (ev.key === "Escape") { closeMemoPop(); $("#treePanel").hidden = true; $("#settingsPanel").hidden = true; if (document.activeElement === document.body) select(null); }
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", buildMarkers);
 
@@ -1819,6 +1932,68 @@ $("#jList").addEventListener("click", (ev) => {
   else if (ds.gofile) focusFile(ds.gofile);
   else if (ds.openfile) openFile(ds.openfile, 1);
   else if (ds.jsum) summarizeDay(ds.jsum);
+});
+
+// ------------------------------------------------------------ 클래스 메모 (여러 개, 추가·삭제, 배지 팝오버)
+// 목록에서는 메모마다 1~2줄만 보이고, 누르면 전체 내용이 펼쳐짐
+function memoListHtml(c, openId) {
+  const memos = c.memos || [];
+  if (!memos.length) return `<div class="muted" style="margin-bottom:6px">메모 없음</div>`;
+  return `<div class="memos">${memos.slice().reverse().map(m => `<div class="memo${openId === m.id ? " open" : ""}" data-memoid="${m.id}" title="${openId === m.id ? "접기" : "전체 보기"}">
+    <div class="mtext">${esc(m.text)}</div>
+    <div class="mmeta"><span>${esc(m.at.slice(0, 16).replace("T", " "))}</span><button class="link" data-delmemo="${m.id}">삭제</button></div></div>`).join("")}</div>`;
+}
+const memoAddRow = (id) => `<div class="inrow"><textarea id="${id}" class="autogrow" rows="1" placeholder="메모 추가 (Enter 저장, Shift+Enter 줄바꿈)"></textarea><button class="sm" data-addmemo="${id}">추가</button></div>`;
+
+async function memoAction(ds, classId, onChange) {
+  const c = st.d.classes[classId];
+  if (!c) return false;
+  if (ds.delmemo) {
+    await edit("remove_memo", { class_id: classId, memo_id: ds.delmemo }, `${classId} 메모 삭제`);
+  } else if (ds.addmemo) {
+    const inp = document.getElementById(ds.addmemo), text = inp ? inp.value.trim() : "";
+    if (!text) return true;
+    const r = await edit("add_memo", { class_id: classId, text }, `${classId} 메모 추가`);
+    if (r) { const again = document.getElementById(ds.addmemo); if (again) { again.value = ""; autoGrow(again); again.focus(); } }
+  } else if (ds.memoid) {
+    onChange(ds.memoid);
+  } else return false;
+  return true;
+}
+
+function openMemoPop(id) { st.memoPop = { id, open: null }; renderMemoPop(); }
+function closeMemoPop() { if (st.memoPop) { st.memoPop = null; $("#memoPop").hidden = true; } }
+function renderMemoPop() {
+  const p = $("#memoPop"), mp = st.memoPop;
+  const c = mp && st.d.classes[mp.id];
+  const badge = c && document.querySelector(`.memo-badge[data-memo="${CSS.escape(mp.id)}"]`);
+  const anchor = badge || (c && nodeEl(mp.id));
+  if (!c || !anchor) { closeMemoPop(); return; }
+  const keep = $("#mpNew") ? $("#mpNew").value : "";
+  p.innerHTML = `<div class="mph"><b title="${esc(c.id)}">${esc(c.id)}</b><span class="muted">메모 ${(c.memos || []).length}</span><button class="link" data-closememo>닫기</button></div>
+    ${memoListHtml(c, mp.open)}${memoAddRow("mpNew")}`;
+  if (keep) { $("#mpNew").value = keep; autoGrow($("#mpNew")); }
+  p.hidden = false;
+  positionMemoPop(anchor);
+}
+function positionMemoPop(anchor) {
+  const p = $("#memoPop"), wr = $("#canvasWrap").getBoundingClientRect(), r = anchor.getBoundingClientRect();
+  const left = Math.min(Math.max(8, r.left - wr.left), wr.width - p.offsetWidth - 8);
+  let top = r.bottom - wr.top + 6;
+  if (top + p.offsetHeight > wr.height - 8) top = Math.max(8, r.top - wr.top - p.offsetHeight - 6);
+  p.style.left = left + "px"; p.style.top = top + "px";
+}
+$("#memoPop").addEventListener("click", async (ev) => {
+  const ds = ev.target.dataset || {};
+  if (ds.closememo !== undefined) { closeMemoPop(); return; }
+  // 삭제·추가 버튼이 메모 카드 안에 있으므로 버튼을 먼저 찾음
+  const el = ev.target.closest("[data-delmemo], [data-addmemo]") || ev.target.closest("[data-memoid]");
+  if (!el || !st.memoPop) return;
+  await memoAction(el.dataset, st.memoPop.id, (mid) => { st.memoPop.open = st.memoPop.open === mid ? null : mid; renderMemoPop(); });
+});
+$("#memoPop").addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") { closeMemoPop(); return; }
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.target.id === "mpNew") { ev.preventDefault(); memoAction({ addmemo: "mpNew" }, st.memoPop.id); }
 });
 
 // ------------------------------------------------------------ 파일로 이동 / 에디터로 열기

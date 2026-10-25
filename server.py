@@ -92,7 +92,7 @@ def merge_rescan(cur, new):
         old = cur["classes"].get(cid)
         if not old:
             continue
-        for k in ("x", "y", "note", "role", "flags"):
+        for k in ("x", "y", "note", "role", "flags", "memos"):
             if k in old:
                 nc[k] = old[k]
         if old["origin"] == "code":
@@ -283,6 +283,8 @@ class DiagramTools:
             lines.append("inferred role: " + c["role"]["summary"])
         if c.get("flags"):
             lines.append("user flags: " + ", ".join(c["flags"]))
+        for memo in c.get("memos", []):
+            lines.append(f"user memo ({memo['at'][:10]}): " + memo["text"].replace("\n", " / ")[:300])
         for m in c["members"]:
             tag = (" [design]" if m["origin"] == "design" else "") + (" [REMOVED]" if m.get("removed") else "") \
                 + (f" [flags: {', '.join(m['flags'])}]" if m.get("flags") else "") \
@@ -375,6 +377,27 @@ class DiagramTools:
         if changed:
             self.log(id, f"~ {id} ({', '.join(changed)})")
         return f"updated {id}: {', '.join(changed) or 'no change'}"
+
+    # 사용자 메모 (인스펙터·메모 배지에서만 사용, AI 도구 목록에는 없음)
+    def t_add_memo(self, class_id, text):
+        c = self.cls(class_id)
+        text = (text or "").strip()
+        if not text:
+            raise ToolError("메모가 비어 있음")
+        c.setdefault("memos", []).append({"id": uuid.uuid4().hex[:8], "text": text[:4000], "at": now()})
+        self.log(c["id"], f"+ {c['id']} 메모")
+        return "added memo"
+
+    def t_remove_memo(self, class_id, memo_id):
+        c = self.cls(class_id)
+        memos = c.get("memos", [])
+        if not any(m["id"] == memo_id for m in memos):
+            raise ToolError("메모를 찾을 수 없음")
+        c["memos"] = [m for m in memos if m["id"] != memo_id]
+        if not c["memos"]:
+            c.pop("memos")
+        self.log(c["id"], f"- {c['id']} 메모")
+        return "removed memo"
 
     def t_remove_class(self, id):
         c = self.cls(id)
@@ -905,7 +928,7 @@ def summarize_day(repo, date, lang, api_key, model, backend):
 # ==================================================================== 수동 플래그
 USER_FLAGS = ("added", "modified", "review")
 MANUAL_OPS = {"upsert_class", "remove_class", "add_members", "edit_member", "remove_members", "restore",
-              "add_relation", "remove_relation"}
+              "add_relation", "remove_relation", "add_memo", "remove_memo"}
 
 
 def set_flags(d, cid, sig, state):
@@ -926,6 +949,54 @@ def set_flags(d, cid, sig, state):
     for r in d["relations"]:
         if r["from"] == cid and r["label"].replace("[*]", "") == label:
             r["removed"] = removed
+
+
+# ==================================================================== 폴더 선택 / 저장 파일 가져오기
+# 브라우저는 폴더의 실제 경로를 알려주지 않으므로, 서버(로컬)가 OS 폴더 선택 창을 띄워 경로를 받음.
+# tkinter는 HTTP 처리 스레드가 아닌 별도 프로세스에서 실행함
+PICK_FOLDER_SCRIPT = r'''
+import sys, tkinter as tk
+from tkinter import filedialog
+root = tk.Tk(); root.withdraw(); root.attributes("-topmost", True); root.update()
+p = filedialog.askdirectory(initialdir=sys.argv[1] or None, title="스캔할 repo 폴더 선택", mustexist=True, parent=root)
+root.destroy()
+sys.stdout.write(p or "")
+'''
+
+
+def pick_folder(initial):
+    try:
+        r = subprocess.run([sys.executable, "-c", PICK_FOLDER_SCRIPT, initial or ""], capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=900, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    except (OSError, subprocess.TimeoutExpired):
+        raise ToolError("폴더 선택 창을 띄우지 못함 (경로를 직접 입력할 것)")
+    path = r.stdout.strip()
+    return os.path.normpath(path) if path else ""
+
+
+def import_bundle(req):
+    """Ctrl+S로 저장한 묶음(JSON)을 열어 이 PC의 작업 데이터로 씀."""
+    b = req.get("bundle") or {}
+    if b.get("format") != "class-diagram-bundle" or not isinstance(b.get("diagram"), dict):
+        raise ToolError("ClassDiagram 저장 파일(JSON)이 아님")
+    repo = norm_repo(req.get("repo") or b.get("repo") or "")
+    if not os.path.isdir(repo):
+        return 409, {"needRepo": True, "savedRepo": b.get("repo")}
+    incoming = copy.deepcopy(b["diagram"])
+    incoming["repo"] = repo
+    with lock:
+        cur = load(repo)
+        mode = req.get("mode")
+        if cur is not None and cur != incoming and mode is None:
+            return 409, {"conflict": True, "repo": repo, "localScannedAt": cur.get("scannedAt"), "fileSavedAt": b.get("savedAt")}
+        replaced = cur is None or mode == "replace"
+        if replaced:
+            save(repo, incoming)
+            if isinstance(b.get("journal"), dict):
+                journal.save(data_path(repo), b["journal"])
+            sessions.pop(repo, None)
+        d = incoming if replaced else cur
+    return 200, {"diagram": d, "repo": repo, "replaced": replaced, "canUndo": False}
 
 
 # ==================================================================== HTTP
@@ -960,11 +1031,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(n) or b"{}")
+            route = self.path.rstrip("/")
+            # repo가 아직 없거나(폴더 선택) 이 PC에 없을 수 있는(저장 파일 열기) 요청은 repo 확인 전에 처리
+            if route == "/api/pick_folder":
+                return self.send_json(200, {"path": pick_folder(req.get("initial", ""))})
+            if route == "/api/import":
+                return self.send_json(*import_bundle(req))
             repo = norm_repo(req.get("repo", ""))
             if not os.path.isdir(repo):
                 return self.send_json(400, {"error": f"repo 경로가 없음: {repo}"})
             roots = [r.strip().strip("/\\") for r in req.get("roots", []) if r.strip()]
-            route = self.path.rstrip("/")
             backend = req.get("backend") or "api"
             # AI 호출이 걸리는 요청은 전역 lock 밖에서 처리 (Claude Code 채팅은 도구 호출이 /api/tool로 다시 들어옴)
             if route == "/api/role":
