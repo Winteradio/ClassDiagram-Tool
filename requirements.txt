@@ -1,0 +1,2 @@
+# API 키 방식으로 AI 기능을 쓸 때만 필요 (Claude Code 구독 방식은 claude CLI만 있으면 됨)
+anthropic>=2.3.0
